@@ -5,7 +5,7 @@ A comprehensive safety system for fishermen with weather-based alerts and guidel
 ## Features
 
 ### 🌦️ Weather Alert System
-- **Real-time weather integration**: Fetches data from OpenWeatherMap API
+- **Real-time weather integration**: Uses free Open-Meteo API by default (no API key required), with optional OpenWeatherMap support
 - **Rule-based alert engine**: Analyzes wind speed, visibility, rainfall, and conditions
 - **Multi-language support**: English, Hindi (हिंदी), and Marathi (मराठी)
 - **Multiple output formats**: Full alerts, SMS-friendly, voice-optimized
