@@ -1,18 +1,10 @@
-"""
-Flask API for Fishermen Alert System
-Provides REST endpoints and Web UI for weather alerts and document extraction
-"""
-
 from flask import Flask, jsonify, request, render_template_string
-from weather_api import get_weather_data, get_mock_weather_data
+from weather_api import get_weather_data
 from alert_engine import generate_alert, format_alert_for_display, AlertLevel
 from nlp_generator import generate_nlp_message, generate_sms_alert, generate_voice_text
 from document_extractor import DocumentExtractor, extract_from_text
 
 app = Flask(__name__)
-
-# Configuration
-USE_MOCK_DATA = True  # Set to False when you have a real API key
 
 
 # Main HTML template with full UI
@@ -649,7 +641,23 @@ REGULATIONS:
                             </div>
                             <div class="detail-item">
                                 <div class="detail-label">Rainfall</div>
-                                <div class="detail-value">${data.details.rain_1h.toFixed(0)} mm/h</div>
+                                <div class="detail-value">${data.details.rain_1h.toFixed(1)} mm/h</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Wave Height</div>
+                                <div class="detail-value">${(data.details.wave_height || 0).toFixed(2)} m</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Swell</div>
+                                <div class="detail-value">${(data.details.swell_wave_height || 0).toFixed(2)} m</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Wave Period</div>
+                                <div class="detail-value">${(data.details.wave_period || 0).toFixed(1)} s</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Ocean Current</div>
+                                <div class="detail-value">${(data.details.ocean_current_velocity || 0).toFixed(2)} km/h</div>
                             </div>
                         </div>
                         
@@ -840,14 +848,9 @@ def get_alert():
     """
     location = request.args.get("location", "Mumbai")
     language = request.args.get("lang", "en")
-    use_mock = request.args.get("mock", str(USE_MOCK_DATA)).lower() == "true"
-    scenario = request.args.get("scenario", "normal")
     
-    # Get weather data
-    if use_mock:
-        weather_data = get_mock_weather_data(location, scenario)
-    else:
-        weather_data = get_weather_data(location)
+    # Get real weather + ocean data
+    weather_data = get_weather_data(location)
     
     # Generate alert
     alert = generate_alert(weather_data)
@@ -897,10 +900,7 @@ def get_sms_alert():
     location = request.args.get("location", "Mumbai")
     language = request.args.get("lang", "en")
     
-    if USE_MOCK_DATA:
-        weather_data = get_mock_weather_data(location)
-    else:
-        weather_data = get_weather_data(location)
+    weather_data = get_weather_data(location)
     
     alert = generate_alert(weather_data)
     sms = generate_sms_alert(weather_data, alert["level"], language)
@@ -914,10 +914,7 @@ def get_voice_alert():
     location = request.args.get("location", "Mumbai")
     language = request.args.get("lang", "en")
     
-    if USE_MOCK_DATA:
-        weather_data = get_mock_weather_data(location)
-    else:
-        weather_data = get_weather_data(location)
+    weather_data = get_weather_data(location)
     
     alert = generate_alert(weather_data)
     voice = generate_voice_text(weather_data, alert["level"], language)
@@ -932,11 +929,8 @@ def health_check():
 
 
 if __name__ == "__main__":
-    print("\n" + "=" * 50)
-    print("  FISHERMEN ALERT SYSTEM - Web Server")
-    print("=" * 50)
-    print("\n  Web interface: http://localhost:5000")
+    print("\nFISHERMEN ALERT SYSTEM - Web Server\n")
+    print("  Web interface: http://localhost:5000")
     print("  API endpoint:  http://localhost:5000/api/alert")
-    print("\n  Press Ctrl+C to stop the server.")
-    print("=" * 50 + "\n")
+    print("\n  Press Ctrl+C to stop the server.\n")
     app.run(debug=True, host="0.0.0.0", port=5000)

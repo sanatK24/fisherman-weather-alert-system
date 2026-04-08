@@ -18,8 +18,6 @@ pandas>=1.5.0
 # SMS Integration (optional)
 # twilio>=8.0.0
 
-# Testing
-pytest>=7.0.0
 
 # Development
 python-dotenv>=1.0.0
