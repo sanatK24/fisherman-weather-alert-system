@@ -1,0 +1,355 @@
+"""
+Document Extractor Module
+Extracts important information from fishing guidelines and documents
+"""
+
+import re
+import os
+from typing import Dict, List, Tuple, Optional
+from collections import Counter
+
+
+# Keywords for different categories
+SAFETY_KEYWORDS = [
+    "danger", "warning", "caution", "alert", "emergency", "hazard", "risk",
+    "unsafe", "prohibited", "forbidden", "avoid", "never", "don't", "do not",
+    "life jacket", "vest", "safety gear", "first aid", "rescue", "sos",
+    "खतरा", "सावधान", "चेतावनी", "धोका", "सावध"  # Hindi/Marathi
+]
+
+WEATHER_KEYWORDS = [
+    "wind", "storm", "rain", "monsoon", "cyclone", "hurricane", "thunder",
+    "lightning", "fog", "visibility", "tide", "wave", "current", "temperature",
+    "forecast", "weather", "climate", "season", "summer", "winter",
+    "हवा", "तूफान", "बारिश", "मौसम", "वारा", "पाऊस"  # Hindi/Marathi
+]
+
+REGULATION_KEYWORDS = [
+    "license", "permit", "legal", "illegal", "law", "regulation", "rule",
+    "fine", "penalty", "ban", "season", "quota", "limit", "size", "minimum",
+    "maximum", "allowed", "permitted", "restricted", "zone", "area",
+    "prohibited", "conservation", "protected", "species"
+]
+
+EQUIPMENT_KEYWORDS = [
+    "net", "boat", "engine", "motor", "fuel", "anchor", "rope", "hook",
+    "line", "rod", "reel", "bait", "trap", "gear", "equipment", "tool",
+    "radio", "gps", "compass", "light", "torch", "battery"
+]
+
+EMERGENCY_KEYWORDS = [
+    "emergency", "sos", "distress", "rescue", "coast guard", "helpline",
+    "phone", "contact", "call", "radio", "signal", "flare", "help",
+    "hospital", "medical", "injury", "accident", "drown", "capsize"
+]
+
+
+class DocumentExtractor:
+    """Extracts and summarizes important information from fishing guidelines."""
+    
+    def __init__(self):
+        self.categories = {
+            "safety": SAFETY_KEYWORDS,
+            "weather": WEATHER_KEYWORDS,
+            "regulations": REGULATION_KEYWORDS,
+            "equipment": EQUIPMENT_KEYWORDS,
+            "emergency": EMERGENCY_KEYWORDS
+        }
+    
+    def read_file(self, filepath: str) -> Optional[str]:
+        """Read content from a file."""
+        try:
+            # Try different encodings
+            encodings = ['utf-8', 'utf-16', 'latin-1', 'cp1252']
+            
+            for encoding in encodings:
+                try:
+                    with open(filepath, 'r', encoding=encoding) as f:
+                        return f.read()
+                except UnicodeDecodeError:
+                    continue
+            
+            print(f"❌ Could not read file with supported encodings")
+            return None
+            
+        except FileNotFoundError:
+            print(f"❌ File not found: {filepath}")
+            return None
+        except Exception as e:
+            print(f"❌ Error reading file: {e}")
+            return None
+    
+    def extract_sentences(self, text: str) -> List[str]:
+        """Split text into sentences."""
+        # Handle multiple sentence endings
+        text = re.sub(r'\n+', ' ', text)
+        text = re.sub(r'\s+', ' ', text)
+        
+        # Split on sentence boundaries
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        
+        # Clean up sentences
+        sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
+        
+        return sentences
+    
+    def categorize_sentence(self, sentence: str) -> List[str]:
+        """Determine which categories a sentence belongs to."""
+        sentence_lower = sentence.lower()
+        found_categories = []
+        
+        for category, keywords in self.categories.items():
+            for keyword in keywords:
+                if keyword.lower() in sentence_lower:
+                    found_categories.append(category)
+                    break
+        
+        return found_categories
+    
+    def extract_numbers(self, text: str) -> List[Dict]:
+        """Extract important numbers (limits, sizes, distances, etc.)."""
+        numbers = []
+        
+        # Patterns for different number types
+        patterns = [
+            (r'(\d+)\s*(km/h|kmph|mph)', 'speed'),
+            (r'(\d+)\s*(km|kilometer|kilometre|meter|metre|m|feet|ft)', 'distance'),
+            (r'(\d+)\s*(kg|kilogram|gram|g|pound|lb)', 'weight'),
+            (r'(\d+)\s*(cm|inch|inches|mm)', 'size'),
+            (r'(\d+)\s*(hour|hr|minute|min|day|week|month)', 'time'),
+            (r'₹?\s*(\d+[\d,]*)', 'amount'),
+            (r'(\d{10})', 'phone'),
+        ]
+        
+        for pattern, num_type in patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                numbers.append({
+                    "value": match.group(0),
+                    "type": num_type,
+                    "context": text[max(0, match.start()-30):min(len(text), match.end()+30)]
+                })
+        
+        return numbers
+    
+    def extract_contacts(self, text: str) -> List[Dict]:
+        """Extract emergency contacts and helpline numbers."""
+        contacts = []
+        
+        # Phone number patterns
+        phone_patterns = [
+            r'\b(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})\b',
+            r'\b(\d{10,11})\b',
+            r'\b(\d{4}[-.\s]?\d{6})\b',
+            r'\b(1\d{2,3})\b',  # Emergency numbers like 100, 108, 1800
+        ]
+        
+        for pattern in phone_patterns:
+            matches = re.finditer(pattern, text)
+            for match in matches:
+                # Get surrounding context
+                start = max(0, match.start() - 50)
+                end = min(len(text), match.end() + 20)
+                context = text[start:end].strip()
+                
+                contacts.append({
+                    "number": match.group(1),
+                    "context": context
+                })
+        
+        return contacts
+    
+    def extract_key_points(self, text: str) -> Dict[str, List[str]]:
+        """Extract key points organized by category."""
+        sentences = self.extract_sentences(text)
+        
+        categorized = {
+            "safety": [],
+            "weather": [],
+            "regulations": [],
+            "equipment": [],
+            "emergency": [],
+            "general": []
+        }
+        
+        for sentence in sentences:
+            categories = self.categorize_sentence(sentence)
+            
+            if categories:
+                for cat in categories:
+                    if sentence not in categorized[cat]:
+                        categorized[cat].append(sentence)
+            else:
+                # Check if it contains important action words
+                action_words = ["must", "should", "always", "never", "required", "important"]
+                if any(word in sentence.lower() for word in action_words):
+                    categorized["general"].append(sentence)
+        
+        # Remove empty categories
+        return {k: v for k, v in categorized.items() if v}
+    
+    def generate_summary(self, text: str) -> Dict:
+        """Generate a comprehensive summary of the document."""
+        key_points = self.extract_key_points(text)
+        numbers = self.extract_numbers(text)
+        contacts = self.extract_contacts(text)
+        
+        # Count words for statistics
+        words = text.lower().split()
+        word_count = len(words)
+        
+        # Find most common important words
+        important_words = [w for w in words if len(w) > 4]
+        common_words = Counter(important_words).most_common(10)
+        
+        return {
+            "statistics": {
+                "total_words": word_count,
+                "total_sentences": len(self.extract_sentences(text)),
+                "categories_found": list(key_points.keys())
+            },
+            "key_points": key_points,
+            "important_numbers": numbers[:10],  # Limit to top 10
+            "emergency_contacts": contacts,
+            "common_topics": common_words
+        }
+    
+    def format_summary_for_display(self, summary: Dict) -> str:
+        """Format the summary for terminal display."""
+        lines = [
+            "\n" + "=" * 60,
+            "📄 DOCUMENT ANALYSIS SUMMARY",
+            "=" * 60,
+            f"\n📊 Statistics:",
+            f"   • Total words: {summary['statistics']['total_words']}",
+            f"   • Total sentences: {summary['statistics']['total_sentences']}",
+            f"   • Categories found: {', '.join(summary['statistics']['categories_found'])}"
+        ]
+        
+        # Key points by category
+        lines.append("\n" + "-" * 60)
+        lines.append("📋 KEY POINTS BY CATEGORY")
+        lines.append("-" * 60)
+        
+        category_icons = {
+            "safety": "🛡️ SAFETY",
+            "weather": "🌦️ WEATHER",
+            "regulations": "📜 REGULATIONS",
+            "equipment": "🔧 EQUIPMENT",
+            "emergency": "🚨 EMERGENCY",
+            "general": "📌 GENERAL"
+        }
+        
+        for category, points in summary['key_points'].items():
+            icon = category_icons.get(category, f"📍 {category.upper()}")
+            lines.append(f"\n{icon}:")
+            for i, point in enumerate(points[:5], 1):  # Show top 5 per category
+                # Truncate long sentences
+                if len(point) > 100:
+                    point = point[:100] + "..."
+                lines.append(f"   {i}. {point}")
+        
+        # Emergency contacts
+        if summary['emergency_contacts']:
+            lines.append("\n" + "-" * 60)
+            lines.append("📞 EMERGENCY CONTACTS FOUND")
+            lines.append("-" * 60)
+            seen = set()
+            for contact in summary['emergency_contacts'][:5]:
+                if contact['number'] not in seen:
+                    lines.append(f"   • {contact['number']}: {contact['context'][:50]}...")
+                    seen.add(contact['number'])
+        
+        # Important numbers
+        if summary['important_numbers']:
+            lines.append("\n" + "-" * 60)
+            lines.append("🔢 IMPORTANT NUMBERS/LIMITS")
+            lines.append("-" * 60)
+            seen = set()
+            for num in summary['important_numbers']:
+                if num['value'] not in seen:
+                    lines.append(f"   • {num['value']} ({num['type']})")
+                    seen.add(num['value'])
+        
+        lines.append("\n" + "=" * 60)
+        
+        return "\n".join(lines)
+
+
+def extract_from_file(filepath: str) -> Optional[Dict]:
+    """
+    Main function to extract information from a file.
+    
+    Args:
+        filepath: Path to the document file
+    
+    Returns:
+        Dictionary containing extracted information
+    """
+    extractor = DocumentExtractor()
+    
+    # Read file
+    text = extractor.read_file(filepath)
+    if text is None:
+        return None
+    
+    # Generate summary
+    summary = extractor.generate_summary(text)
+    
+    return summary
+
+
+def extract_from_text(text: str) -> Dict:
+    """
+    Extract information from provided text.
+    
+    Args:
+        text: The text content to analyze
+    
+    Returns:
+        Dictionary containing extracted information
+    """
+    extractor = DocumentExtractor()
+    return extractor.generate_summary(text)
+
+
+if __name__ == "__main__":
+    # Demo with sample text
+    sample_text = """
+    FISHING SAFETY GUIDELINES
+    
+    WARNING: Always check weather forecast before going to sea. Wind speeds above 40 km/h 
+    are dangerous for small boats. Never go fishing alone.
+    
+    SAFETY EQUIPMENT:
+    - Life jacket must be worn at all times
+    - Carry a first aid kit
+    - GPS device recommended for navigation
+    - Minimum boat length: 15 feet
+    
+    EMERGENCY CONTACTS:
+    - Coast Guard: 1554
+    - Marine Police: 100
+    - Emergency Helpline: 108
+    - Fisheries Department: 1800-123-4567
+    
+    REGULATIONS:
+    - Fishing license required (Fine: ₹5000 for violation)
+    - Minimum fish size: 25 cm
+    - Prohibited during monsoon season (June-August)
+    - Maximum catch limit: 50 kg per day
+    
+    WEATHER ALERTS:
+    - Red flag: Do not venture into sea
+    - Yellow flag: Exercise caution
+    - Green flag: Safe for fishing
+    
+    खतरा: तूफान के दौरान समुद्र में न जाएं।
+    सावधान: जीवन रक्षक जैकेट हमेशा पहनें।
+    """
+    
+    print("Testing Document Extractor with sample fishing guidelines...")
+    
+    extractor = DocumentExtractor()
+    summary = extractor.generate_summary(sample_text)
+    print(extractor.format_summary_for_display(summary))
