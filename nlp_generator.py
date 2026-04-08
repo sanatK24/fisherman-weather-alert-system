@@ -1,8 +1,7 @@
-from typing import Dict, Optional
+from typing import Dict
 from alert_engine import AlertLevel
 
 
-# Message templates for different alert levels
 TEMPLATES = {
     "en": {
         AlertLevel.SAFE: [
