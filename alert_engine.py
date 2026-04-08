@@ -8,7 +8,7 @@ class AlertLevel(Enum):
     DANGEROUS = "dangerous"
 
 
-# Atmospheric thresholds
+
 THRESHOLDS = {
     "wind_speed": {
         "safe": 20,
